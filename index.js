@@ -8,35 +8,60 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);  // Use the HTTP server for Socket.IO
+
 const io = new Server(server, {
-    cors: {
-      origin: "http://localhost:5173", // Vite's default port
-      methods: ["GET", "POST", "PUT", "DELETE"]
-    }
-  });
+  cors: {
+    origin: [
+      "http://localhost:5173",  // Allow local frontend
+      "https://task-management-c3af3.web.app"  // Allow deployed frontend
+    ],
+    methods:["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  },
+});
+// Allow both local development and deployed frontend
+const allowedOrigins = [
+  "http://localhost:5173",  // Local development
+  "https://task-management-c3af3.web.app"  // Deployed frontend
+];
+
 
 const port = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true, // Allow cookies and authentication headers
+  })
+);
 app.use(express.json());
 
  // Socket.IO connection event
  io.on("connection", (socket) => {
-    console.log("New client connected");
+  console.log("New client connected");
 
-    // Listen for task updates from the client
-    socket.on("taskUpdate", (taskData) => {
-      console.log("Task update received:", taskData);
-      // Emit an event to all connected clients with the updated task data
-      io.emit("taskUpdated", taskData);
-    });
-
-    // Handle client disconnect event
-    socket.on("disconnect", () => {
-      console.log("Client disconnected");
-    });
+  socket.on("taskCreated", (task) => {
+      console.log("New Task Created:", task);
+      io.emit("taskCreated", task);  // Broadcast to all clients
   });
+
+  socket.on("taskUpdated", (task) => {
+      console.log("Task Updated:", task);
+      io.emit("taskUpdated", task);
+  });
+
+  socket.on("taskDeleted", (taskId) => {
+      console.log("Task Deleted:", taskId);
+      io.emit("taskDeleted", taskId);
+  });
+
+  socket.on("disconnect", () => {
+      console.log("Client disconnected");
+  });
+});
+
 
 // MongoDB Connection URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.jwqfj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -54,7 +79,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect to MongoDB
-    await client.connect();
+    // await client.connect();
     console.log("Successfully Connected to MongoDB!");
 
     // Define database and collections
@@ -63,6 +88,11 @@ async function run() {
     const tasksCollection = database.collection("tasks");
 
    
+     // Users endpoints
+     app.get("/users", async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
 
     // Create User API (Signup)
     app.post("/users", async (req, res) => {
